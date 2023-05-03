@@ -2,8 +2,10 @@ package com.freddiemac.fhpa.service;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -16,10 +18,14 @@ import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.util.StringUtil;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
 
 import com.freddiemac.fhpa.model.HPIPOMonthlyHist;
 import com.freddiemac.fhpa.model.LongerHpiExpUsNsa;
+import com.freddiemac.fhpa.model.CUURSAL;
 
 import jakarta.annotation.PostConstruct;
 
@@ -29,11 +35,13 @@ public class FHPAService {
 	private int qtr_no;
 	private String add_qtr;
 	
+	DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH);
+	
 	private LocalDate lamaDate = LocalDate.now();
-	private LocalDate hpiQtr = LocalDate.now();
+	private LocalDate hpiQtr = LocalDate.now(); // constant value ? 06/30/2021 // hpi end date
 	private int month = 9;
 	private List<Integer> quarters = Arrays.asList(3,6,9);
-	
+	private LocalDate hpi_mo;
 	@PostConstruct
     public void init() {
 //        LOG.info(Arrays.asList(environment.getDefaultProfiles()));
@@ -48,7 +56,7 @@ public class FHPAService {
 			int cutOffMonth = hpiQtr.getMonthValue();
 			int quarter = result.getQuarter();
 			int year = result.getYear();
-			if(result.getPlace().equalsIgnoreCase("USD") && result.getYear() >= 1991) {
+			if(result.getPlace().equalsIgnoreCase("USA") && result.getYear() >= 1991) {
 				qtr_no = 0;
 				add_qtr = "N";
 			}
@@ -323,7 +331,147 @@ public class FHPAService {
     		double gr_rt_mo1 = monthlyHist.getUsaNSA()/lhpi1;
     		double gr_rt_mo2 = monthlyHist.getUsaNSA()/lhpi2;
     		
-//    		double 
+    		int year = mon.getYear();
+    		int month = mon.getYear();
+    		int coutOffMonth = lamaDate.getMonthValue();
+    		LocalDate hpi_mo;
+//    		double lhpi1_qtr = 1;
+//    		double lhpi2_qtr = 1;
+    		if(Arrays.asList(3,6,9,12).contains(coutOffMonth)) {
+    			hpi_mo = hpiQtr;
+    		}else {
+    			if(Arrays.asList(3,6,9,12).contains(month) ) {
+    				hpi_mo = hpiQtr;
+    			}else if(Arrays.asList(1,4,7,10).contains(month)) {
+//    				hpi_mo = lhpi1_qtr * gr_rt_mo1;
+    			}else if(Arrays.asList(2,5,8,11).contains(month)) {
+//    				hpi_mo = lhpi2_qtr * gr_rt_mo2;
+    			}
+    		}
+    		
+    		LocalDate valMonth = mon.plusMonths(3);
+    		int valMo = valMonth.getMonthValue();
+    		int valYr = valMonth.getYear();
+    		String lamaMonth = valYr+""+valMo;
+    		
     	}
+    	List<CUURSAL> cuurSalList = processCUURData();
+		for(int i=0;i<cuurSalList.size();i++) {
+			CUURSAL cuurSal = cuurSalList.get(i);
+			LocalDate cpiDate = cuurSal.getObservationDate();
+			
+			String startDateString = "01Mar1975";
+    		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMMyyyy", Locale.ENGLISH);
+    		LocalDate startDate = LocalDate.parse(startDateString, formatter);
+//    		
+//    		String endDateString = "01Mar1991";
+//    		LocalDate endDate = LocalDate.parse(endDateString, formatter);
+    		double cpiValue = cuurSal.getCUUR0000SA0L2();
+    		double rollAvg;
+			if(cpiDate.compareTo(startDate)>=0) {
+				if(i>2)
+					rollAvg = (cuurSalList.get(i).getCUUR0000SA0L2() + cuurSalList.get(i-1).getCUUR0000SA0L2()+cuurSalList.get(i-2).getCUUR0000SA0L2())/3;
+				else
+					rollAvg = cuurSal.getCUUR0000SA0L2();
+			}else {
+				rollAvg = cpiValue;
+			}
+			LocalDate hpi;
+			if(add_qtr.equalsIgnoreCase("N")) {
+				hpi = hpiQtr;
+			}else {
+				hpi = hpi_mo;
+			}
+			
+			double dsfHpi = hpi.getMonthValue()/rollAvg;
+			double qtr_seq = 1;//doubt
+			double lrsfHpiTrend = 0.66112295*Math.exp(0.002619948*qtr_seq);
+			double adjPct = (dsfHpi/lrsfHpiTrend)-1;
+			double ltvAdjPct;
+			double ccAdj;
+			if(adjPct > 0.5) {
+				ltvAdjPct = 1/(1+((1.05*lrsfHpiTrend/dsfHpi)-1));
+				ccAdj = 1.05*lrsfHpiTrend/dsfHpi-1;
+			}else if(adjPct < -0.5) {
+				ltvAdjPct = 1/(1+((0.95*lrsfHpiTrend/dsfHpi)-1));
+				ccAdj = 0.955*lrsfHpiTrend/dsfHpi-1;
+			}else {
+				ltvAdjPct = 1;
+				ccAdj = 0;
+			}
+			
+			
+		}
+    	
     }
+    
+    public List<CUURSAL> processCUURData() {
+		List<CUURSAL> resultMappers = new ArrayList<>();
+		FileInputStream resultFileStream=null;
+		HSSFWorkbook wb=null; 
+		try {
+			resultFileStream=new FileInputStream(new File("/fmacdata/utility/carrac/euc_dev/ccf/final_rule/assumptions/cc_adj/202109/input/longer_HPI_EXP_us_nsa.xls"));
+			wb = new HSSFWorkbook(resultFileStream);
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		} 
+		
+	    HSSFSheet sheet=wb.getSheet("Fred_Graph");
+	    
+	    int rowIndex=0;
+	    Row row;
+	    Iterator<Row> rowIterator = sheet.iterator();
+	    while (rowIterator.hasNext()) {
+	    	if(rowIndex > 10) {
+	    		row = rowIterator.next();
+	    		CUURSAL rowMapper = prepareCUURRowMapper(row);
+	    		resultMappers.add(rowMapper);
+	    		rowIndex++;
+	    	}else {
+	    		row = rowIterator.next();
+	    		rowIndex++;
+	    	}
+		      
+	      }  
+        return resultMappers;
+	}
+	
+	/**
+     * this method will process the row 
+     * @param row
+     * @return
+     */
+    private CUURSAL prepareCUURRowMapper(Row row) {
+    	CUURSAL rowMapper = new CUURSAL();
+		int cellIndex =0;
+		for(Cell cell: row) { 
+			processCUURCellValue(cellIndex,rowMapper,cell);
+			 if(cellIndex == 2) {
+				break; 
+			 }
+			cellIndex++;
+		}
+	 return rowMapper;
+    }
+    
+    /**
+     * This method will process the cells of the row
+     * @param cellindex
+     * @param rowMapper
+     * @param cell
+     */
+    private void processCUURCellValue(int cellindex,CUURSAL rowMapper,Cell cell){
+    	switch(cellindex) {
+	    	case 0:
+	    		rowMapper.setObservationDate(cell.getLocalDateTimeCellValue().toLocalDate());
+	    		break;
+	    	case 1:
+	    		rowMapper.setCUUR0000SA0L2(cell.getNumericCellValue());
+	    		break;
+    	}	
+    } 
+    
+
 }
