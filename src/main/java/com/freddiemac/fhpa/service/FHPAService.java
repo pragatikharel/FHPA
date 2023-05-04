@@ -403,7 +403,6 @@ public class FHPAService {
 			}
 			
 			builder.append(lamaMonth+"/t"+ccAdj+"/n");
-			mtmltvCounterCylinderFactor(builder);
 		}
     	
     }
@@ -508,7 +507,6 @@ public class FHPAService {
 		      
 	      } 
 	    
-	    writeCCAdjDateFile(wb);
     }
     
     private Object prepareCCAdjMapper(Row row) {
