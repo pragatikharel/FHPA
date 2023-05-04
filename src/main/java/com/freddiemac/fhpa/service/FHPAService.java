@@ -1,11 +1,12 @@
 package com.freddiemac.fhpa.service;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -18,14 +19,13 @@ import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.util.StringUtil;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
 
+import com.freddiemac.fhpa.model.CUURSAL;
 import com.freddiemac.fhpa.model.HPIPOMonthlyHist;
 import com.freddiemac.fhpa.model.LongerHpiExpUsNsa;
-import com.freddiemac.fhpa.model.CUURSAL;
 
 import jakarta.annotation.PostConstruct;
 
@@ -309,6 +309,7 @@ public class FHPAService {
     }
     
     public void calculateGrowthRate(List<HPIPOMonthlyHist> hpiPoMonthlyHistList) {
+    	String lamaMonth="";
     	for(int i=0;i<hpiPoMonthlyHistList.size();i++) {
     		HPIPOMonthlyHist monthlyHist = hpiPoMonthlyHistList.get(i);
     		LocalDate mon = monthlyHist.getMonth();
@@ -352,10 +353,11 @@ public class FHPAService {
     		LocalDate valMonth = mon.plusMonths(3);
     		int valMo = valMonth.getMonthValue();
     		int valYr = valMonth.getYear();
-    		String lamaMonth = valYr+""+valMo;
+    		lamaMonth = valYr+""+valMo;
     		
     	}
     	List<CUURSAL> cuurSalList = processCUURData();
+    	StringBuffer builder = new StringBuffer();
 		for(int i=0;i<cuurSalList.size();i++) {
 			CUURSAL cuurSal = cuurSalList.get(i);
 			LocalDate cpiDate = cuurSal.getObservationDate();
@@ -400,7 +402,8 @@ public class FHPAService {
 				ccAdj = 0;
 			}
 			
-			
+			builder.append(lamaMonth+"/t"+ccAdj+"/n");
+			mtmltvCounterCylinderFactor(builder);
 		}
     	
     }
@@ -473,5 +476,69 @@ public class FHPAService {
     	}	
     } 
     
-
+    
+    private void processCCAdjInputFile() {
+    	List resultMappers = new ArrayList<>();
+		FileInputStream resultFileStream=null;
+		HSSFWorkbook wb=null; 
+		try {
+			resultFileStream=new FileInputStream(new File("/fmacdata/utility/carrac/euc_dev/ccf/final_rule/assumptions/cc_adj/202109/input/cc_adj_input.xls"));
+			wb = new HSSFWorkbook(resultFileStream);
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		} 
+		
+	    HSSFSheet sheet=wb.getSheet("cc_adj_input");
+	    
+	    int rowIndex=0;
+	    Row row;
+	    Iterator<Row> rowIterator = sheet.iterator();
+	    while (rowIterator.hasNext()) {
+	    	if(rowIndex > 0) {
+	    		row = rowIterator.next();
+	    		Object rowMapper = prepareCCAdjMapper(row);
+	    		resultMappers.add(rowMapper);
+	    		rowIndex++;
+	    	}else {
+	    		row = rowIterator.next();
+	    		rowIndex++;
+	    	}
+		      
+	      } 
+	    
+	    writeCCAdjDateFile(wb);
+    }
+    
+    private Object prepareCCAdjMapper(Row row) {
+    	CUURSAL rowMapper = new CUURSAL();
+		int cellIndex =0;
+		for(Cell cell: row) { 
+			processCCAdjCellValue(cellIndex,rowMapper,cell);
+			 if(cellIndex == 2) {
+				break; 
+			 }
+			cellIndex++;
+		}
+	 return rowMapper;
+    }
+    
+    /**
+     * This method will process the cells of the row
+     * @param cellindex
+     * @param rowMapper
+     * @param cell
+     */
+    private void processCCAdjCellValue(int cellindex,Object rowMapper,Cell cell){
+    	switch(cellindex) {
+	    	case 0:
+//	    		rowMapper.setObservationDate(cell.getLocalDateTimeCellValue().toLocalDate());
+	    		break;
+	    	case 1:
+//	    		rowMapper.setCUUR0000SA0L2(cell.getNumericCellValue());
+	    		break;
+    	}	
+    } 
+    
 }
