@@ -1,9 +1,25 @@
 package com.freddiemac.fhpa.model;
 
-import java.time.LocalDate;
-
 public class CCAdjInput {
 
-	private LocalDate date;
+	private String date;
+	
+	private double adjustmentFactor;
+
+	public String getDate() {
+		return date;
+	}
+
+	public void setDate(String date) {
+		this.date = date;
+	}
+
+	public double getAdjustmentFactor() {
+		return adjustmentFactor;
+	}
+
+	public void setAdjustmentFactor(double adjustmentFactor) {
+		this.adjustmentFactor = adjustmentFactor;
+	}
 	
 }
